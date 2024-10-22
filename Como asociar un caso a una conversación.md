@@ -56,6 +56,61 @@ Opteniendo el estandar
 </entity></fetch><ContextKey name="msdyn_incident_msdyn_ocliveworkitem" />
 </RecordIdentificationRule></RecordIdentificationRuleSet>
 
+Hacemos Update del custom (esta regla de identificación asocia el contacto y el caso relacionado)
+<RecordIdentificationRuleSet>
+    <RecordIdentificationRule>
+        <PrimaryEntity LogicalCollectionName="accounts" PrimaryKeyAttribute="accountid" PrimaryNameAttribute="name"/>
+        <fetch version="1.0" output-format="xml-platform" mapping="logical" top="2">
+            <entity name="account">
+                <attribute name="accountid" />
+                <attribute name="name" />
+                <filter type="and">
+                    <condition attribute="statuscode" operator="eq" value="1" />
+                    <condition attribute="name" operator="eq" value="${Name}" />
+                    <condition attribute="telephone1" operator="eq" source="msdyn_msdyn_ocliveworkitem_msdyn_ocphonecallengagementctx_liveworkitemid" value="${GuidContacto}" />
+                    <condition attribute="emailaddress1" operator="eq" value="${Email}" />
+                </filter>
+            </entity>
+        </fetch>
+        <ContextKey name="msdyn_account_msdyn_ocliveworkitem_Customer" isPreferred="false"/>
+    </RecordIdentificationRule>
+
+    <RecordIdentificationRule>
+        <PrimaryEntity LogicalCollectionName="contacts" PrimaryKeyAttribute="contactid" PrimaryNameAttribute="fullname"/>
+        <fetch version="1.0" output-format="xml-platform" mapping="logical" top="1">
+            <entity name="contact">
+                <attribute name="contactid" />
+                <attribute name="fullname" />
+                <filter type="and">
+                    <condition attribute="emailaddress1" operator="eq" value="${CorreoElectronico}" />
+                    <condition attribute="statuscode" operator="eq" value="1" />
+                </filter>
+                <link-entity name="incident" from="customerid" to="contactid" alias="incident" link-type="outer">
+                    <attribute name="ticketnumber" />
+                </link-entity>
+            </entity>
+        </fetch>
+        <ContextKey name="msdyn_contact_msdyn_ocliveworkitem_Customer" isPreferred="true"/>
+    </RecordIdentificationRule>
+
+    <RecordIdentificationRule>
+        <PrimaryEntity LogicalCollectionName="incidents" PrimaryKeyAttribute="incidentid" PrimaryNameAttribute="title"/>
+        <fetch version="1.0" output-format="xml-platform" mapping="logical" top="2">
+            <entity name="incident">
+                <attribute name="incidentid" />
+                <attribute name="title" />
+                <filter type="and">
+                    <condition attribute="ticketnumber" operator="eq" value="${CaseNumber}" />
+                    <condition attribute="statuscode" operator="eq" value="1" />
+                </filter>
+                <link-entity name="account" from="accountid" to="customerid" link-type="outer" alias="ac" />
+                <link-entity name="contact" from="contactid" to="customerid" link-type="outer" alias="co" />
+            </entity>
+        </fetch>
+        <ContextKey name="msdyn_incident_msdyn_ocliveworkitem" />
+    </RecordIdentificationRule>
+</RecordIdentificationRuleSet>
+
 una vez me halla traido todo tengo que actualizar el codigo con las condiciones que necesite 
 Una vez modificado el codigo volveremos a la herramienra ToolBox SQL 4 
 
