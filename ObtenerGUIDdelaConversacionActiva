@@ -1,12 +1,42 @@
-Microsoft.Omnichannel.getConversationId().then(conversationid => {
-Xrm.WebApi.retrieveMultipleRecords("msdyn_ocliveworkitemcontextitem","?$filter=_msdyn_ocliveworkitemid_value eq '"+conversationid+"'&$select=msdyn_value,msdyn_name")
-    .then(results => {
-        console.log(results.entities)
-        var correoEletronicoJson = results.entities.filter(item => item.msdyn_name == "CorreoElectronico")
-        console.log(correoElectronico)
-        if(correoEletronicoJson.length != 0) {
-            var correoElectronico = correoEletronicoJson[0].msdyn_value
-            console.log(correoElectronico)
-        }
-    })
-})
+function obtenerYAsignarLeadPorCorreoElectronico() {
+    Microsoft.Omnichannel.getConversationId().then(conversationid => {
+        Xrm.WebApi.retrieveMultipleRecords("msdyn_ocliveworkitemcontextitem", "?$filter=_msdyn_ocliveworkitemid_value eq '" + conversationid + "'&$select=msdyn_value,msdyn_name")
+            .then(results => {
+                var correoEletronicoJson = results.entities.filter(item => item.msdyn_name === "CorreoElectronico");
+                
+                if (correoEletronicoJson.length !== 0) {
+                    var correoElectronico = correoEletronicoJson[0].msdyn_value;
+                    console.log("Correo electrónico encontrado:", correoElectronico);
+
+                    Xrm.WebApi.retrieveMultipleRecords("lead", "?$filter=emailaddress1 eq '" + correoElectronico + "'&$select=leadid,fullname")
+                        .then(leadsResults => {
+                            if (leadsResults.entities.length > 0) {
+                                var lead = leadsResults.entities[0];
+                                
+                                console.log("Lead ID:", lead.leadid);
+                                console.log("Nombre completo del lead:", lead.fullname);
+
+                                var lookupValue = [{
+                                    id: lead.leadid,
+                                    name: lead.fullname,
+                                    entityType: "lead"
+                                }];
+
+                                Xrm.Page.getAttribute("axz_lead").setValue(lookupValue);
+                                console.log("Lead asignado al campo axz_lead.");
+                            } else {
+                                console.log("No se encontró ningún lead con ese correo electrónico.");
+                            }
+                        })
+                        .catch(error => {
+                            console.error("Error al consultar la tabla lead:", error);
+                        });
+                } else {
+                    console.log("No se encontró el campo 'CorreoElectronico' en la conversación.");
+                }
+            })
+            .catch(error => {
+                console.error("Error al consultar msdyn_ocliveworkitemcontextitem:", error);
+            });
+    });
+}
