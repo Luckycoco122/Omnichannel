@@ -1,0 +1,12 @@
+Microsoft.Omnichannel.getConversationId().then(conversationid => {
+Xrm.WebApi.retrieveMultipleRecords("msdyn_ocliveworkitemcontextitem","?$filter=_msdyn_ocliveworkitemid_value eq '"+conversationid+"'&$select=msdyn_value,msdyn_name")
+    .then(results => {
+        console.log(results.entities)
+        var correoEletronicoJson = results.entities.filter(item => item.msdyn_name == "CorreoElectronico")
+        console.log(correoElectronico)
+        if(correoEletronicoJson.length != 0) {
+            var correoElectronico = correoEletronicoJson[0].msdyn_value
+            console.log(correoElectronico)
+        }
+    })
+})
