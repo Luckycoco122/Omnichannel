@@ -1,0 +1,97 @@
+async function obtenerYAsignarLeadPorContacto(executionContext) {
+    try {
+        // Obtén el contexto del formulario
+        const formContext = executionContext.getFormContext();
+        console.log("Iniciando proceso de obtención y asignación de lead...");
+
+        // Obtiene el ID de la conversación activa
+        const conversationid = await Microsoft.Omnichannel.getConversationId();
+        console.log("Conversation ID:", conversationid);
+
+        // Obtiene el número de teléfono asociado a la conversación
+        const telefono = await ObtenerTelefono(conversationid);
+        console.log("Teléfono obtenido:", telefono);
+
+        if (telefono) {
+            // Construye el FetchXML para buscar el contacto
+            const fetchXml = `
+            <fetch>
+              <entity name='contact'>
+                <attribute name='contactid'/>
+                <attribute name='fullname'/>
+                <filter type='or'>
+                  <condition attribute='mobilephone' operator='eq' value='${telefono}'/>
+                  <condition attribute='telephone1' operator='eq' value='${telefono}'/>
+                </filter>
+              </entity>
+            </fetch>`;
+            
+            console.log("FetchXML generado:", fetchXml);
+
+            // Codifica el FetchXML
+            const encodedFetchXML = encodeURIComponent(fetchXml);
+            const fetchXmlRequest = "?fetchXml=" + encodedFetchXML;
+
+            // Llama a la Web API para obtener los contactos
+            const contacts = await Xrm.WebApi.retrieveMultipleRecords("contact", fetchXmlRequest);
+            console.log("Contactos encontrados:", contacts.entities);
+
+            if (contacts.entities.length > 0) {
+                const contact = contacts.entities[0];
+                console.log("Primer contacto encontrado:", contact);
+
+                // Asocia el contacto encontrado al campo lookup del formulario
+                AsignarContactoALookup(contact, formContext);
+            } else {
+                console.log("No se encontró ningún contacto con ese número de teléfono.");
+            }
+        } else {
+            console.log("No se encontró un número de teléfono asociado a la conversación.");
+        }
+    } catch (error) {
+        console.error("Error en obtenerYAsignarLeadPorContacto:", error);
+    }
+}
+
+async function ObtenerTelefono(conversationid) {
+    try {
+        // Llama a la API para obtener los datos de la conversación activa
+        const results = await Xrm.WebApi.online.retrieveMultipleRecords(
+            "msdyn_ocliveworkitemcontextitem",
+            `?$filter=_msdyn_ocliveworkitemid_value eq '${conversationid}'&$select=msdyn_value,msdyn_name`
+        );
+        
+        console.log("Resultados detallados de msdyn_ocliveworkitemcontextitem:", results.entities);
+
+        // Busca el número de teléfono en los resultados obtenidos
+        var telefonoJson = results.entities.find(item => item.msdyn_name === "WhatsAppCustomerPhoneNumber");
+        
+        console.log("Entidad con nombre 'WhatsAppCustomerPhoneNumber':", telefonoJson);
+
+        return telefonoJson ? telefonoJson.msdyn_value : null;
+    } catch (error) {
+        console.error("Error en ObtenerTelefono:", error);
+        return null;
+    }
+}
+
+function AsignarContactoALookup(contact, formContext) {
+    try {
+        // Configuración del valor del lookup
+        var lookupValue = [{
+            id: contact.contactid,
+            name: contact.fullname,
+            entityType: "contact"
+        }];
+
+        // Verifica si el campo 'msdyn_customer' existe en el formulario
+        if (formContext.getAttribute("msdyn_customer")) {
+            formContext.getAttribute("msdyn_customer").setValue(lookupValue);
+            console.log("Contacto asignado al campo msdyn_customer:", lookupValue);
+        } else {
+            console.warn("El campo 'msdyn_customer' no existe en el formulario.");
+        }
+    } catch (error) {
+        console.error("Error en AsignarContactoALookup:", error);
+    }
+}
