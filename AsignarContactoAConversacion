@@ -1,6 +1,155 @@
+//Necesitaremos ocultar el campo msdyn_customer, y colocar el js el primero de todos los eventos
 async function obtenerYAsignarLeadPorContacto(executionContext) {
     try {
-        // Obtén el contexto del formulario
+        // Obtén el contexto del formularioasync function obtenerYAsignarLeadPorContacto(executionContext) {
+    const FIELD_NAME = "msdyn_customer";
+    const PHONE_FIELD_NAME = "WhatsAppCustomerPhoneNumber";
+
+    try {
+        const formContext = executionContext.getFormContext();
+        const visibilidadCliente = formContext.getControl(FIELD_NAME);
+        setControlVisibility(visibilidadCliente, false);
+
+        console.log("Iniciando proceso de obtención y asignación de lead...");
+
+        // Obtener Conversation ID desde Omnichannel
+        const conversationId = await Microsoft.Omnichannel.getConversationId();
+        console.log("Conversation ID:", conversationId);
+
+        if (!conversationId) {
+            console.warn("No se encontró un ID de conversación válido.");
+            setControlVisibility(visibilidadCliente, true);
+            return;
+        }
+
+        // Consultar msdyn_ocliveworkitem
+        const liveWorkItemResult = await retrieveLiveWorkItem(conversationId);
+
+        if (liveWorkItemResult && liveWorkItemResult["_msdyn_customer_value"]) {
+            const contactId = liveWorkItemResult["_msdyn_customer_value"];
+            const contactEntityType = liveWorkItemResult["_msdyn_customer_value@Microsoft.Dynamics.CRM.lookuplogicalname"];
+            const contactName = liveWorkItemResult["_msdyn_customer_value@OData.Community.Display.V1.FormattedValue"];
+
+            if (contactEntityType === "contact") {
+                console.log(`Cliente encontrado en la conversación: ${contactName} (ID: ${contactId})`);
+                setLookupField(formContext, contactId, contactName, contactEntityType, FIELD_NAME);
+                setControlVisibility(visibilidadCliente, true);
+                return;
+            } else {
+                console.warn("El cliente asociado no es de tipo 'contact'.");
+            }
+        } else {
+            console.log("No se encontró cliente asociado en la conversación.");
+        }
+
+        // Buscar cliente por teléfono
+        console.log("No se encontró cliente en la conversación. Buscando por teléfono...");
+        const telefono = await obtenerTelefono(conversationId, PHONE_FIELD_NAME);
+
+        if (!telefono) {
+            console.log("No se encontró un número de teléfono asociado.");
+            setControlVisibility(visibilidadCliente, true);
+            return;
+        }
+
+        const contact = await buscarContactoPorTelefono(telefono);
+
+        if (contact) {
+            console.log(`Cliente encontrado por teléfono: ${contact.fullname} (ID: ${contact.contactid})`);
+            setLookupField(formContext, contact.contactid, contact.fullname, "contact", FIELD_NAME);
+        } else {
+            console.log("No se encontró ningún contacto con el número de teléfono proporcionado.");
+        }
+
+        setControlVisibility(visibilidadCliente, true);
+
+    } catch (error) {
+        console.error("Error en obtenerYAsignarLeadPorContacto:", error);
+    }
+}
+
+async function retrieveLiveWorkItem(conversationId) {
+    return await Xrm.WebApi.retrieveRecord(
+        "msdyn_ocliveworkitem",
+        conversationId,
+        "?$select=_msdyn_customer_value"
+    );
+}
+
+async function obtenerTelefono(conversationId, fieldName) {
+    try {
+        const results = await Xrm.WebApi.online.retrieveMultipleRecords(
+            "msdyn_ocliveworkitemcontextitem",
+            `?$filter=_msdyn_ocliveworkitemid_value eq '${conversationId}'&$select=msdyn_value,msdyn_name`
+        );
+
+        console.log("Resultados detallados de msdyn_ocliveworkitemcontextitem:", results.entities);
+
+        const telefonoJson = results.entities.find((item) => item.msdyn_name === fieldName);
+        return telefonoJson ? telefonoJson.msdyn_value : null;
+
+    } catch (error) {
+        console.error("Error en obtenerTelefono:", error);
+        return null;
+    }
+}
+
+async function buscarContactoPorTelefono(telefono) {
+    const fetchXml = `
+        <fetch>
+          <entity name='contact'>
+            <attribute name='contactid'/>
+            <attribute name='fullname'/>
+            <filter type='or'>
+              <condition attribute='mobilephone' operator='eq' value='${telefono}'/>
+              <condition attribute='telephone1' operator='eq' value='${telefono}'/>
+            </filter>
+          </entity>
+        </fetch>`;
+
+    console.log("FetchXML generado:", fetchXml);
+
+    const encodedFetchXML = encodeURIComponent(fetchXml);
+    const fetchXmlRequest = "?fetchXml=" + encodedFetchXML;
+
+    const contactResult = await Xrm.WebApi.retrieveMultipleRecords("contact", fetchXmlRequest);
+    return contactResult.entities.length > 0 ? contactResult.entities[0] : null;
+}
+
+function setLookupField(formContext, id, name, entityName, fieldName) {
+    try {
+        const lookupValue = [
+            {
+                id: id,
+                name: name,
+                entityType: entityName,
+            },
+        ];
+
+        const fieldAttribute = formContext.getAttribute(fieldName);
+        if (fieldAttribute) {
+            fieldAttribute.setValue(lookupValue);
+            console.log(`Cliente asignado al campo ${fieldName}:`, lookupValue);
+        } else {
+            console.warn(`El campo '${fieldName}' no existe en el formulario.`);
+        }
+    } catch (error) {
+        console.error("Error en setLookupField:", error);
+    }
+}
+
+function setControlVisibility(control, visible) {
+    try {
+        if (control) {
+            control.setVisible(visible);
+        } else {
+            console.warn("El control no está disponible.");
+        }
+    } catch (error) {
+        console.error("Error al cambiar la visibilidad del control:", error);
+    }
+}
+
         const formContext = executionContext.getFormContext();
         console.log("Iniciando proceso de obtención y asignación de lead...");
 
