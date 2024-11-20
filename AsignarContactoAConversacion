@@ -1,3 +1,4 @@
+//Se asigna un contacto a conversación a traves del canal de Whasap sin usar bots de por medio, directamente cuando el usuario mando un mensaje en twilio se la pasa la conversacón directamente al agente
 //Necesitaremos ocultar el campo msdyn_customer, y colocar el js el primero de todos los eventos
 async function obtenerYAsignarLeadPorContacto(executionContext) {
     try {
