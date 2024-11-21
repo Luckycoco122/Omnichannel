@@ -1,0 +1,185 @@
+https://neilparkhurst.com/2024/10/09/unified-routing-agent-capacity-availability-issues/
+
+Whilst using Microsoft’s Dynamics 365 Contact Center, Unified Routing is used to route conversations to agents. A process which needs to leverage the agents availability. From time to time, I have experienced an issue that the agent availability can become out of step with reality.
+
+The Issue
+
+The problem I have occasionally seen is that the agent has some (or all) of their availability consumed but as far as you can tell they are not in any sessions and have no open conversations.
+
+Note: I am creating this blog post in October 2024, by the time you read this Microsoft could have fixed the causes of this issue!
+
+To diagnose this issue, I typically make use of the real-time analytics dashboard. Using the agent tab, select your agent and then open the “Detailed View”.
+
+As shown below, you will now be able to see the agent’s availability in terms of their capacity units and profiles. When you look at these details if you establish that the agent has no open conversations, but their availability is being consumed, then you might have this issue.
+
+Tip: In the screen shot below my agent’s capacity and availability are the same. The agent is not in any conversations meaning this is expected. But if the agent’s availability was less than their capacity and no conversations were open then you may have a problem.
+
+
+The business impact here will typically be that an agent calls you and reports they are being assigned no phone calls. Or maybe they explain they should be able to handle “3” chats concurrently but only ever get assigned one chat.
+
+Next Steps
+
+The first step you should take is to ensure the agents are closing sessions correctly. I have seen examples of agents leaving sessions whilst the conversation is still open. If that happens then they may be “stuck” in wrap up for these sessions. So before looking to “fix” anything, I suggest you ensure the agent has no conversations assigned.
+
+If they have a conversation assigned and have incorrectly closed the session. Asking them to simply re-open the conversation and close correctly may resolve this issue.
+
+Once you have established that agent behavior isn’t the root cause, if you can’t find the conversations you may need to reach out to Microsoft support to request help.
+
+Possible Fixes
+
+I have recently experienced this issue several times. And because of engaging with support, I’m now aware of a couple of scripts which may resolve this issue.
+
+NOTE: I cannot guarantee these fixes resolve all instances of this problem! But they might be worth trying before spending time engaging with Microsoft support. If you have any doubts I suggest calling support!
+
+There are three possible causes I’m aware of. We have separate fixes for each scenario.
+
+Sessions that have a “state” of active despite being closed.
+Open sessions incorrectly associated with conversations that are closed.
+Sessions that have a state of closed, but are open
+Fix One
+
+Here we are looking for closed sessions that have a state of open.
+
+First construct a query (URL) that will return a list of inactive sessions that have an open state. The query below should achieve that.
+
+<<YOUR_ORG_URL>>/api/data/v9.2/msdyn_ocsessions?$select=activityid,statecode,msdyn_state&$filter=statecode eq 1 and msdyn_state ne 192350002
+In theory this query should return no rows. But if any are returned you can use the script below to close the sessions.
+
+To do this, use f12 in your browser and run the script below in the console. (You will need to be a Dynamics 365 admin!)
+
+var sessionIds = [];
+var query = "?$filter=statecode eq 1 and msdyn_state ne 192350002&$select=activityid";
+Xrm.WebApi.retrieveMultipleRecords("msdyn_ocsession", query).then(
+  function success(result) {
+      if (result.entities.length > 0) {
+         result.entities.forEach(function(entity) {
+             sessionIds.push(entity.activityid);
+          });
+          // print sessionIds
+          console.log("find session IDs:", sessionIds);
+         updateSessionRecords(sessionIds);
+      } else {
+          console.log("no sessions");
+      }
+  },
+  function(error) {
+      console.log("errror: " + error.message);
+  }
+);
+function updateSessionRecords(ids) {
+  var record = {
+      msdyn_state: 192350002
+  };
+  ids.forEach(function(id) {
+      // print sessionId
+      console.log("updating session ID: " + id);
+      Xrm.WebApi.updateRecord("msdyn_ocsession", id, record).then(
+          function success(result) {
+              var updatedId = result.id;
+              console.log("Updated ID: " + updatedId);
+          },
+          function(error) {
+              console.log("Error updating ID " + id + ": " + error.message);
+          }
+      );
+  });
+}
+Fix Two
+
+Here we are looking for sessions that are open/active, but the conversation is closed. Construct a URL based on the details below. This will return any sessions linked to closed conversations.
+
+<<YOUR_ORG_URL>>/api/data/v9.2/msdyn_ocsessions?$select=activityid,statecode,msdyn_state&$expand=msdyn_liveworkitemid_msdyn_ocsession($select=statecode,statuscode,_msdyn_activeagentid_value)&$filter=statecode eq 0 and msdyn_state eq 192350001 and msdyn_liveworkitemid_msdyn_ocsession/statecode eq 1 
+Again, in theory this query should return no rows. But if any are returned you can use the script below to close the sessions.
+
+Note: I would recommend some caution with the following script. I’m not 100% sure but it might occasionally be valid for a user to have a session open, but the related conversation be closed. Therefore, I would suggest possibly only running this fix when no users are active in the Customer Service Workspace app. (Just to be safe!)
+
+To update these sessions, use f12 in your browser and run the script below in the console. (You will need to be a Dynamics 365 admin!)
+
+var sessionIds = [];
+ var query = "?$select=activityid&$expand=msdyn_liveworkitemid_msdyn_ocsession($select=statecode,statuscode)&$filter=statecode eq 0 and msdyn_state eq 192350001 and msdyn_liveworkitemid_msdyn_ocsession/statecode eq 1";
+Xrm.WebApi.retrieveMultipleRecords("msdyn_ocsession", query).then(
+   function success(result) {
+       if (result.entities.length > 0) {
+          result.entities.forEach(function(entity) {
+              sessionIds.push(entity.activityid);
+           });
+            // Print sessionIds
+           console.log("Find session IDs:", sessionIds);
+           updateSessionRecords(sessionIds);
+       } else {
+           console.log("No sessions found.");
+       }
+   },
+   function(error) {
+       console.log("Error: " + error.message);
+   }
+);
+ 
+function updateSessionRecords(ids) {
+   var record = {
+      msdyn_state: 192350002
+   };
+ 
+   ids.forEach(function(id) {
+       console.log("Updating session ID: " + id);
+ 
+      Xrm.WebApi.updateRecord("msdyn_ocsession", id, record).then(
+           function success(result) {
+               var updatedId = result.id;
+               console.log("Updated ID: " + updatedId);
+           },
+           function(error) {
+               console.log("Error updating ID " + id + ": " + error.message);
+           }
+       );
+   });
+}
+Fix Three
+
+Here we are looking for sessions that are open, but have a state of closed. Meaning they should be closed!
+
+<<YOUR_ORG_URL>>/api/data/v9.2/msdyn_ocsessions?$select=activityid,statecode,msdyn_state&$filter=statecode eq 0 and msdyn_state eq 192350002 
+Again, in theory this query should return no rows. But if any are returned you can use the script below to close the sessions.
+
+To do this, use f12 in your browser and run the script below in the console. (You will need to be a Dynamics 365 admin!)
+
+var sessionIds = [];
+var query = "?$filter=statecode eq 0 and msdyn_state eq 192350002&$select=activityid";
+Xrm.WebApi.retrieveMultipleRecords("msdyn_ocsession", query).then(
+  function success(result) {
+      if (result.entities.length > 0) {
+         result.entities.forEach(function(entity) {
+             sessionIds.push(entity.activityid);
+          });
+          // print sessionIds
+          console.log("find session IDs:", sessionIds);
+         updateSessionRecords(sessionIds);
+      } else {
+          console.log("no sessions");
+      }
+  },
+  function(error) {
+      console.log("errror: " + error.message);
+  }
+);
+function updateSessionRecords(ids) {
+  var record = {
+      statecode: 1,
+  };
+  ids.forEach(function(id) {
+      // print sessionId
+      console.log("updating session ID: " + id);
+      Xrm.WebApi.updateRecord("msdyn_ocsession", id, record).then(
+          function success(result) {
+              var updatedId = result.id;
+              console.log("Updated ID: " + updatedId);
+          },
+          function(error) {
+              console.log("Error updating ID " + id + ": " + error.message);
+          }
+      );
+  });
+}
+Having completed any of these fixes. You will need the impacted users to log out and back in. After they’ve done that, you should see their availability return to expected values.
+
+Hopefully this solution will be of use. But if you continue to see problems with agent availability, I suggest a Microsoft support call maybe required. Enjoy.
